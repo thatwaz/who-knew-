@@ -13,51 +13,31 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 
+
 @HiltViewModel
 class TriviaViewModel @Inject constructor(
     private val repository: TriviaRepository
 ) : ViewModel() {
 
-    // Question data
     private val _questions = MutableStateFlow<List<TriviaQuestion>>(emptyList())
     val questions: StateFlow<List<TriviaQuestion>> = _questions
 
     private val _currentQuestionIndex = MutableStateFlow(0)
     val currentQuestionIndex: StateFlow<Int> = _currentQuestionIndex
 
-    private val _allQuestions = MutableStateFlow<List<TriviaQuestion>>(emptyList()) // Store all fetched questions
-
-    // User progress
-    private val _points = MutableStateFlow(0)
-    val points: StateFlow<Int> = _points
-
-    private val _wageredPoints = MutableStateFlow(0)
-    val wageredPoints: StateFlow<Int> = _wageredPoints
-
-    private val _selectedAnswer = MutableStateFlow<String?>(null)
-    val selectedAnswer: StateFlow<String?> = _selectedAnswer
-
-    private val _isAnswerCorrect = MutableStateFlow<Boolean?>(null)
-    val isAnswerCorrect: StateFlow<Boolean?> = _isAnswerCorrect
-
     private val _selectedCategory = MutableStateFlow<String?>(null)
     val selectedCategory: StateFlow<String?> = _selectedCategory
 
-    private val _currentDifficulty = MutableStateFlow("Easy")
+    private val _currentDifficulty = MutableStateFlow("easy")
     val currentDifficulty: StateFlow<String> = _currentDifficulty
 
-    private val _gameOver = MutableStateFlow(false)
-    val gameOver: StateFlow<Boolean> = _gameOver
+    private val _points = MutableStateFlow(1000) // Starting points
+    val points: StateFlow<Int> = _points
 
-//    val points: StateFlow<Int> = _points
+    private val _wager = MutableStateFlow(0) // Wager for the current question
+    val wager: StateFlow<Int> = _wager
 
-    fun updatePoints(wager: Int, isCorrect: Boolean) {
-        _points.value = if (isCorrect) {
-            _points.value + wager
-        } else {
-            (_points.value - wager).coerceAtLeast(0) // Prevent negative points
-        }
-    }
+    private val _allQuestions = MutableStateFlow<List<TriviaQuestion>>(emptyList())
 
     fun setCategory(category: String) {
         _selectedCategory.value = category
@@ -67,16 +47,14 @@ class TriviaViewModel @Inject constructor(
     private fun fetchAllQuestionsForCategory(category: String) {
         viewModelScope.launch {
             try {
-                Log.d("TriviaViewModel", "Fetching questions for category: $category")
                 val questions = repository.getFilteredQuestions(
-                    amount = 50, // Fetch a large batch of questions
+                    amount = 50,
                     difficulty = null, // Fetch all difficulties
                     category = category
                 ).filter { it.question.isNotBlank() && it.correctAnswer.isNotBlank() }
 
-                Log.d("TriviaViewModel", "Fetched ${questions.size} questions for category: $category")
                 _allQuestions.value = questions
-                filterQuestionsByDifficulty("easy") // Start with easy questions
+                filterQuestionsByDifficulty("easy")
             } catch (e: Exception) {
                 Log.e("TriviaViewModel", "Error fetching questions: ${e.message}")
             }
@@ -90,73 +68,198 @@ class TriviaViewModel @Inject constructor(
         if (filteredQuestions.isNotEmpty()) {
             _questions.value = filteredQuestions
             _currentQuestionIndex.value = 0
-            _currentDifficulty.value = difficulty.capitalize()
-            Log.d("TriviaViewModel", "Filtered ${filteredQuestions.size} questions for difficulty: $difficulty")
+            _currentDifficulty.value = difficulty
         } else {
-            Log.d("TriviaViewModel", "No more questions for difficulty: $difficulty")
-            // Move to the next difficulty if no questions are left
             when (difficulty) {
                 "easy" -> filterQuestionsByDifficulty("medium")
                 "medium" -> filterQuestionsByDifficulty("hard")
-                else -> Log.d("TriviaViewModel", "No more questions available in any difficulty")
+                else -> Log.d("TriviaViewModel", "No more questions available.")
             }
         }
+    }
+
+    fun setWager(wagerAmount: Int) {
+        _wager.value = wagerAmount
+    }
+
+    fun answerQuestion(selectedAnswer: String): Boolean {
+        val correctAnswer = _questions.value[_currentQuestionIndex.value].correctAnswer
+        val isCorrect = selectedAnswer == correctAnswer
+
+        if (isCorrect) {
+            _points.value += _wager.value
+        } else {
+            _points.value -= _wager.value
+        }
+
+        return isCorrect
     }
 
     fun moveToNextQuestion() {
         if (_currentQuestionIndex.value < _questions.value.size - 1) {
             _currentQuestionIndex.value += 1
-            _selectedAnswer.value = null
-            _isAnswerCorrect.value = null
         } else {
-            // When all questions in the current difficulty are answered, move to the next difficulty
-            Log.d("TriviaViewModel", "Completed difficulty: ${_currentDifficulty.value}")
-            when (_currentDifficulty.value.lowercase()) {
-                "easy" -> filterQuestionsByDifficulty("medium")
-                "medium" -> filterQuestionsByDifficulty("hard")
-                "hard" -> Log.d("TriviaViewModel", "All questions completed!")
-            }
+            filterQuestionsByDifficulty(_currentDifficulty.value)
         }
     }
 
-    fun selectAnswer(answer: String) {
-        _selectedAnswer.value = answer
-        val correctAnswer = _questions.value[_currentQuestionIndex.value].correctAnswer
-        _isAnswerCorrect.value = answer == correctAnswer
-
-        // Update points based on correctness
-        val pointsForQuestion = when (_currentDifficulty.value.lowercase()) {
-            "easy" -> 100
-            "medium" -> 250
-            "hard" -> 500
-            else -> 0
-        }
-        if (_isAnswerCorrect.value == true) {
-            _points.value += wageredPoints.value
-        } else {
-            _points.value -= wageredPoints.value
-        }
-
-        if (_points.value <= 0) {
-            _gameOver.value = true
-        }
-    }
-
-    fun setWageredPoints(wager: Int) {
-        _wageredPoints.value = wager
-    }
-
-    fun resetGame() {
-        _points.value = 0
-        _wageredPoints.value = 0
-        _currentQuestionIndex.value = 0
-        _gameOver.value = false
-        _currentDifficulty.value = "Easy"
-        _allQuestions.value = emptyList()
-        _questions.value = emptyList()
-        Log.d("TriviaViewModel", "Game reset.")
+    fun isGameOver(): Boolean {
+        return _points.value <= 0
     }
 }
+
+//@HiltViewModel
+//class TriviaViewModel @Inject constructor(
+//    private val repository: TriviaRepository
+//) : ViewModel() {
+//
+//    // Question data
+//    private val _questions = MutableStateFlow<List<TriviaQuestion>>(emptyList())
+//    val questions: StateFlow<List<TriviaQuestion>> = _questions
+//
+//    private val _currentQuestionIndex = MutableStateFlow(0)
+//    val currentQuestionIndex: StateFlow<Int> = _currentQuestionIndex
+//
+//    private val _allQuestions = MutableStateFlow<List<TriviaQuestion>>(emptyList()) // Store all fetched questions
+//
+//    // User progress
+//    private val _points = MutableStateFlow(0)
+//    val points: StateFlow<Int> = _points
+//
+//    private val _wageredPoints = MutableStateFlow(0)
+//    val wageredPoints: StateFlow<Int> = _wageredPoints
+//
+//    private val _selectedAnswer = MutableStateFlow<String?>(null)
+//    val selectedAnswer: StateFlow<String?> = _selectedAnswer
+//
+//    private val _isAnswerCorrect = MutableStateFlow<Boolean?>(null)
+//    val isAnswerCorrect: StateFlow<Boolean?> = _isAnswerCorrect
+//
+//    private val _selectedCategory = MutableStateFlow<String?>(null)
+//    val selectedCategory: StateFlow<String?> = _selectedCategory
+//
+//    private val _currentDifficulty = MutableStateFlow("Easy")
+//    val currentDifficulty: StateFlow<String> = _currentDifficulty
+//
+//    private val _gameOver = MutableStateFlow(false)
+//    val gameOver: StateFlow<Boolean> = _gameOver
+//
+////    val points: StateFlow<Int> = _points
+//
+//    private val _wager = MutableStateFlow<Int>(0)
+//    val wager: StateFlow<Int> = _wager
+//
+//    fun setWager(amount: Int) {
+//        _wager.value = amount
+//    }
+//
+//
+//    fun updatePoints(wager: Int, isCorrect: Boolean) {
+//        _points.value = if (isCorrect) {
+//            _points.value + wager
+//        } else {
+//            (_points.value - wager).coerceAtLeast(0) // Prevent negative points
+//        }
+//    }
+//
+//    fun setCategory(category: String) {
+//        _selectedCategory.value = category
+//        fetchAllQuestionsForCategory(category)
+//    }
+//
+//    private fun fetchAllQuestionsForCategory(category: String) {
+//        viewModelScope.launch {
+//            try {
+//                Log.d("TriviaViewModel", "Fetching questions for category: $category")
+//                val questions = repository.getFilteredQuestions(
+//                    amount = 50, // Fetch a large batch of questions
+//                    difficulty = null, // Fetch all difficulties
+//                    category = category
+//                ).filter { it.question.isNotBlank() && it.correctAnswer.isNotBlank() }
+//
+//                Log.d("TriviaViewModel", "Fetched ${questions.size} questions for category: $category")
+//                _allQuestions.value = questions
+//                filterQuestionsByDifficulty("easy") // Start with easy questions
+//            } catch (e: Exception) {
+//                Log.e("TriviaViewModel", "Error fetching questions: ${e.message}")
+//            }
+//        }
+//    }
+//
+//    private fun filterQuestionsByDifficulty(difficulty: String) {
+//        val filteredQuestions = _allQuestions.value.filter {
+//            it.difficulty.equals(difficulty, ignoreCase = true)
+//        }
+//        if (filteredQuestions.isNotEmpty()) {
+//            _questions.value = filteredQuestions
+//            _currentQuestionIndex.value = 0
+//            _currentDifficulty.value = difficulty.capitalize()
+//            Log.d("TriviaViewModel", "Filtered ${filteredQuestions.size} questions for difficulty: $difficulty")
+//        } else {
+//            Log.d("TriviaViewModel", "No more questions for difficulty: $difficulty")
+//            // Move to the next difficulty if no questions are left
+//            when (difficulty) {
+//                "easy" -> filterQuestionsByDifficulty("medium")
+//                "medium" -> filterQuestionsByDifficulty("hard")
+//                else -> Log.d("TriviaViewModel", "No more questions available in any difficulty")
+//            }
+//        }
+//    }
+//
+//    fun moveToNextQuestion() {
+//        if (_currentQuestionIndex.value < _questions.value.size - 1) {
+//            _currentQuestionIndex.value += 1
+//            _selectedAnswer.value = null
+//            _isAnswerCorrect.value = null
+//        } else {
+//            // When all questions in the current difficulty are answered, move to the next difficulty
+//            Log.d("TriviaViewModel", "Completed difficulty: ${_currentDifficulty.value}")
+//            when (_currentDifficulty.value.lowercase()) {
+//                "easy" -> filterQuestionsByDifficulty("medium")
+//                "medium" -> filterQuestionsByDifficulty("hard")
+//                "hard" -> Log.d("TriviaViewModel", "All questions completed!")
+//            }
+//        }
+//    }
+//
+//    fun selectAnswer(answer: String) {
+//        _selectedAnswer.value = answer
+//        val correctAnswer = _questions.value[_currentQuestionIndex.value].correctAnswer
+//        _isAnswerCorrect.value = answer == correctAnswer
+//
+//        // Update points based on correctness
+//        val pointsForQuestion = when (_currentDifficulty.value.lowercase()) {
+//            "easy" -> 100
+//            "medium" -> 250
+//            "hard" -> 500
+//            else -> 0
+//        }
+//        if (_isAnswerCorrect.value == true) {
+//            _points.value += wageredPoints.value
+//        } else {
+//            _points.value -= wageredPoints.value
+//        }
+//
+//        if (_points.value <= 0) {
+//            _gameOver.value = true
+//        }
+//    }
+//
+//    fun setWageredPoints(wager: Int) {
+//        _wageredPoints.value = wager
+//    }
+//
+//    fun resetGame() {
+//        _points.value = 0
+//        _wageredPoints.value = 0
+//        _currentQuestionIndex.value = 0
+//        _gameOver.value = false
+//        _currentDifficulty.value = "Easy"
+//        _allQuestions.value = emptyList()
+//        _questions.value = emptyList()
+//        Log.d("TriviaViewModel", "Game reset.")
+//    }
+//}
 
 //@HiltViewModel
 //class TriviaViewModel @Inject constructor(

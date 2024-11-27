@@ -11,16 +11,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -35,10 +30,8 @@ import androidx.compose.ui.unit.dp
 import com.thatwaz.ui.viewmodels.TriviaViewModel
 
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TriviaScreen(viewModel: TriviaViewModel, category: String) {
-    // Initialize category in ViewModel if not already set
     LaunchedEffect(category) {
         viewModel.setCategory(category)
     }
@@ -46,117 +39,124 @@ fun TriviaScreen(viewModel: TriviaViewModel, category: String) {
     val questions by viewModel.questions.collectAsState()
     val currentQuestionIndex by viewModel.currentQuestionIndex.collectAsState()
     val currentQuestion = questions.getOrNull(currentQuestionIndex)
-    val currentDifficulty by viewModel.currentDifficulty.collectAsState()
+
     val points by viewModel.points.collectAsState()
+    val isGameOver = remember { mutableStateOf(false) }
 
-    var selectedAnswer by remember { mutableStateOf<String?>(null) }
-    var isAnswerCorrect by remember { mutableStateOf<Boolean?>(null) }
-    var wager by remember { mutableStateOf(10) }
+    // State to control wager buttons visibility
+    var showWagerButtons by remember { mutableStateOf(true) }
+    var answerFeedback by remember { mutableStateOf<String?>(null) }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.Top,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            text = "Who New? Trivia Challenge",
-            style = MaterialTheme.typography.titleLarge,
-            modifier = Modifier.padding(16.dp),
-            textAlign = TextAlign.Center
-        )
-
-        Text(
-            text = "Category: $category",
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.padding(8.dp),
-            color = MaterialTheme.colorScheme.secondary
-        )
-
-        Text(
-            text = "Difficulty: $currentDifficulty",
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.padding(8.dp),
-            color = MaterialTheme.colorScheme.secondary
-        )
-
-        Text(
-            text = "Points: $points",
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.padding(8.dp),
-            color = MaterialTheme.colorScheme.secondary
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        if (currentQuestion != null) {
-            // Display the decoded question
-            QuestionCard(questionText = currentQuestion.decodedQuestion)
-
-            // Wager Input
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(vertical = 8.dp)
-            ) {
-                Text(
-                    text = "Wager: ",
-                    style = MaterialTheme.typography.bodyLarge
-                )
-                TextField(
-                    value = wager.toString(),
-                    onValueChange = { input ->
-                        wager = input.toIntOrNull() ?: 0
-                    },
-                    modifier = Modifier.width(80.dp),
-                    textStyle = MaterialTheme.typography.bodyLarge.copy(
-                        textAlign = TextAlign.Center
-                    ),
-                    singleLine = true,
-                    colors = TextFieldDefaults.textFieldColors(
-                        containerColor = MaterialTheme.colorScheme.surface
-                    )
-
-                )
-            }
-
-            // Display the answer options as individual buttons
-            OptionsCard(
-                options = currentQuestion.options,
-                selectedAnswer = selectedAnswer,
-                onOptionSelected = { answer ->
-                    selectedAnswer = answer
-                    val isCorrect = answer == currentQuestion.decodedCorrectAnswer
-                    isAnswerCorrect = isCorrect
-                    viewModel.updatePoints(wager, isCorrect)
-                }
+    if (isGameOver.value) {
+        // Game Over Screen
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "Game Over!",
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.error,
+                textAlign = TextAlign.Center
+            )
+            Text(
+                text = "Final Score: $points",
+                style = MaterialTheme.typography.titleMedium
+            )
+        }
+    } else {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.Top,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            // Points Display
+            Text(
+                text = "Points: $points",
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.padding(bottom = 16.dp)
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
+            // Trivia Question UI
+            currentQuestion?.let { question ->
+                Spacer(modifier = Modifier.height(16.dp))
+                QuestionCard(questionText = question.decodedQuestion)
 
-            // Display feedback and Next button
-            isAnswerCorrect?.let { correct ->
-                Text(
-                    text = if (correct) "Correct!" else "Wrong!",
-                    color = if (correct) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.padding(vertical = 8.dp)
-                )
-                Button(
-                    onClick = {
-                        viewModel.moveToNextQuestion()
-                        selectedAnswer = null
-                        isAnswerCorrect = null
+                Spacer(modifier = Modifier.height(16.dp))
+                OptionsCard(
+                    options = question.options,
+                    selectedAnswer = null,
+                    onOptionSelected = { answer ->
+                        val isCorrect = viewModel.answerQuestion(answer)
+                        answerFeedback = if (isCorrect) "Correct!" else "Wrong!"
+
+                        // Handle game logic
+                        if (viewModel.isGameOver()) {
+                            isGameOver.value = true
+                        } else {
+                            showWagerButtons = true // Show wager buttons for the next question
+                        }
                     }
-                ) {
-                    Text(text = "Next Question")
+                )
+
+                // Feedback Text
+                answerFeedback?.let { feedback ->
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = feedback,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = if (feedback == "Correct!") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(vertical = 8.dp)
+                    )
                 }
             }
-        } else {
-            CircularProgressIndicator()
+
+            // Wager Buttons
+            if (showWagerButtons) {
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "Place Your Wager",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                Row(
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Button(onClick = {
+                        viewModel.setWager((points * 0.25).toInt())
+                        viewModel.moveToNextQuestion()
+                        showWagerButtons = false
+                        answerFeedback = null
+                    }) {
+                        Text(text = "Bet 1/4")
+                    }
+                    Button(onClick = {
+                        viewModel.setWager((points * 0.5).toInt())
+                        viewModel.moveToNextQuestion()
+                        showWagerButtons = false
+                        answerFeedback = null
+                    }) {
+                        Text(text = "Bet 1/2")
+                    }
+                    Button(onClick = {
+                        viewModel.setWager(points)
+                        viewModel.moveToNextQuestion()
+                        showWagerButtons = false
+                        answerFeedback = null
+                    }) {
+                        Text(text = "Bet Max")
+                    }
+                }
+            }
         }
     }
 }
+
+
 
 
 
@@ -217,125 +217,4 @@ fun OptionsCard(
     }
 }
 
-//@Composable
-//fun SinglePlayerTriviaScreen(viewModel: TriviaViewModel) {
-//    val questions by viewModel.questions.collectAsState()
-//    val currentQuestionIndex by viewModel.currentQuestionIndex.collectAsState()
-//    val currentQuestion = questions.getOrNull(currentQuestionIndex)
-//
-//    var selectedAnswer by remember { mutableStateOf<String?>(null) }
-//    var isAnswerCorrect by remember { mutableStateOf<Boolean?>(null) }
-//
-//    Column(
-//        modifier = Modifier
-//            .fillMaxSize()
-//            .padding(16.dp),
-//        verticalArrangement = Arrangement.Top,
-//        horizontalAlignment = Alignment.CenterHorizontally
-//    ) {
-//        Text(
-//            text = "Who New? Trivia Challenge",
-//            style = MaterialTheme.typography.titleLarge,
-//            modifier = Modifier.padding(16.dp),
-//            textAlign = TextAlign.Center
-//        )
-//
-//        Spacer(modifier = Modifier.height(16.dp))
-//
-//        if (currentQuestion != null) {
-//            // Display the question
-//            QuestionCard(questionText = currentQuestion.question)
-//
-//            // Display answer options
-//            OptionsCard(
-//                options = currentQuestion.options,
-//                selectedAnswer = selectedAnswer,
-//                onOptionSelected = { answer ->
-//                    selectedAnswer = answer
-//                    isAnswerCorrect = answer == currentQuestion.correctAnswer
-//                }
-//            )
-//
-//            Spacer(modifier = Modifier.height(16.dp))
-//
-//            // Display feedback and Next button
-//            isAnswerCorrect?.let { correct ->
-//                Text(
-//                    text = if (correct) "Correct!" else "Wrong!",
-//                    color = if (correct) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
-//                )
-//                Spacer(modifier = Modifier.height(8.dp))
-//                Button(
-//                    onClick = {
-//                        viewModel.moveToNextQuestion()
-//                        selectedAnswer = null
-//                        isAnswerCorrect = null
-//                    }
-//                ) {
-//                    Text(text = "Next Question")
-//                }
-//            }
-//        } else {
-//            CircularProgressIndicator()
-//        }
-//    }
-//}
-//
-//@Composable
-//fun QuestionCard(questionText: String) {
-//    Card(
-//        modifier = Modifier
-//            .fillMaxWidth()
-//            .padding(vertical = 8.dp),
-//        shape = MaterialTheme.shapes.medium,
-//        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-//    ) {
-//        Box(modifier = Modifier.padding(16.dp)) {
-//            Text(
-//                text = questionText,
-//                style = MaterialTheme.typography.bodyLarge,
-//                textAlign = TextAlign.Center,
-//                modifier = Modifier.fillMaxWidth()
-//            )
-//        }
-//    }
-//}
-//
-//@Composable
-//fun OptionsCard(
-//    options: List<String>,
-//    selectedAnswer: String?,
-//    onOptionSelected: (String) -> Unit
-//) {
-//    Column(
-//        modifier = Modifier.fillMaxWidth(),
-//        verticalArrangement = Arrangement.spacedBy(8.dp)
-//    ) {
-//        options.forEach { option ->
-//            Card(
-//                modifier = Modifier
-//                    .fillMaxWidth()
-//                    .padding(horizontal = 16.dp)
-//                    .clickable { onOptionSelected(option) },
-//                shape = MaterialTheme.shapes.medium,
-//                colors = CardDefaults.cardColors(
-//                    containerColor = if (option == selectedAnswer) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary
-//                )
-//            ) {
-//                Box(
-//                    contentAlignment = Alignment.Center,
-//                    modifier = Modifier.fillMaxSize()
-//                ) {
-//                    Text(
-//                        text = option,
-//                        style = MaterialTheme.typography.bodyLarge,
-//                        color = MaterialTheme.colorScheme.onPrimary,
-//                        textAlign = TextAlign.Center,
-//                        modifier = Modifier.padding(16.dp)
-//                    )
-//                }
-//            }
-//        }
-//    }
-//}
-//
+
