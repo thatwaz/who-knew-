@@ -8,7 +8,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import com.thatwaz.ui.viewmodels.TriviaViewModel
+import com.thatwaz.whoknew.ui.viewmodels.TriviaViewModel
 import com.thatwaz.whoknew.ui.screens.ChooseCategoryScreen
 import com.thatwaz.whoknew.ui.screens.CreateProfileScreen
 import com.thatwaz.whoknew.ui.screens.TriviaScreen
