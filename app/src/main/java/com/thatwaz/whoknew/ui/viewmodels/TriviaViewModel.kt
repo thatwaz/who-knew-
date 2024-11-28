@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.thatwaz.whoknew.data.models.TriviaQuestion
 import com.thatwaz.whoknew.data.repository.TriviaRepository
+import com.thatwaz.whoknew.filters.GeneralKnowledgeFilter
 
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -16,7 +17,8 @@ import javax.inject.Inject
 
 @HiltViewModel
 class TriviaViewModel @Inject constructor(
-    private val repository: TriviaRepository
+    private val repository: TriviaRepository,
+    private val generalKnowledgeFilter: GeneralKnowledgeFilter
 ) : ViewModel() {
 
     private val _questions = MutableStateFlow<List<TriviaQuestion>>(emptyList())
@@ -39,6 +41,8 @@ class TriviaViewModel @Inject constructor(
 
     private val _allQuestions = MutableStateFlow<List<TriviaQuestion>>(emptyList())
 
+    private var questionsAnsweredForDifficulty = 0 // Track number of questions answered for the current difficulty
+
     fun setCategory(category: String) {
         _selectedCategory.value = category
         fetchAllQuestionsForCategory(category)
@@ -51,7 +55,16 @@ class TriviaViewModel @Inject constructor(
                     amount = 50,
                     difficulty = null, // Fetch all difficulties
                     category = category
-                ).filter { it.question.isNotBlank() && it.correctAnswer.isNotBlank() }
+                ).filter { question ->
+                    val isValid = question.question.isNotBlank() && question.correctAnswer.isNotBlank()
+                    if (!isValid) {
+                        Log.e(
+                            "TriviaViewModel",
+                            "Invalid question filtered out: ${question.question}, Correct Answer: ${question.correctAnswer}"
+                        )
+                    }
+                    isValid
+                }
 
                 _allQuestions.value = questions
                 filterQuestionsByDifficulty("easy")
@@ -60,6 +73,7 @@ class TriviaViewModel @Inject constructor(
             }
         }
     }
+
 
     private fun filterQuestionsByDifficulty(difficulty: String) {
         val filteredQuestions = _allQuestions.value.filter {
@@ -96,10 +110,22 @@ class TriviaViewModel @Inject constructor(
     }
 
     fun moveToNextQuestion() {
-        if (_currentQuestionIndex.value < _questions.value.size - 1) {
-            _currentQuestionIndex.value += 1
+        questionsAnsweredForDifficulty++
+
+        if (questionsAnsweredForDifficulty >= 5) {
+            // Move to the next difficulty level after 5 questions
+            when (_currentDifficulty.value) {
+                "easy" -> filterQuestionsByDifficulty("medium")
+                "medium" -> filterQuestionsByDifficulty("hard")
+                else -> Log.d("TriviaViewModel", "Already at the hardest difficulty.")
+            }
         } else {
-            filterQuestionsByDifficulty(_currentDifficulty.value)
+            // Move to the next question within the same difficulty
+            if (_currentQuestionIndex.value < _questions.value.size - 1) {
+                _currentQuestionIndex.value += 1
+            } else {
+                Log.d("TriviaViewModel", "No more questions at this difficulty.")
+            }
         }
     }
 
@@ -108,58 +134,62 @@ class TriviaViewModel @Inject constructor(
     }
 
     fun getTopicForQuestion(questionText: String): String {
-        val keywordToTopicMap = mapOf(
-            // Broad Categories
-            "president" to "History",
-            "landmark" to "Geography",
-            "planet" to "Science & Nature",
-            "furlong" to "Measurements",
-            "language" to "Language",
-            "company" to "Companies",
-            "companies" to "Companies",
-            "comic" to "Comics",
-            "galaxy" to "Astronomy",
-            "zodiac" to "Astrology",
-            "game" to "Games",
-            "toy" to "Pop Culture",
-            "building" to "Architecture",
-            "helicopter" to "Inventions",
-            "mystery" to "Mysteries",
-            "transportation" to "Transportation",
-            "food" to "Food & Drink",
-            "drink" to "Food & Drink",
-            "color" to "Art & Design",
-            "shape" to "Shapes",
-            "city" to "Geography",
-            "restaurant" to "Restaurants",
-            "technology" to "Technology",
-            "video game" to "Video Games",
-            "candy" to "Food & Drink",
-            "fashion" to "Fashion",
-            "time" to "History",
-            "movie" to "Entertainment",
-            "space" to "Astronomy",
-            "body" to "Biology",
-            "biology" to "Biology",
-            "dance" to "Entertainment",
-            "religion" to "Religion",
-            "animal" to "Animals",
-            "astrology" to "Astrology",
-            "science" to "Science & Nature",
-            "history" to "History",
-            "entertainment" to "Pop Culture"
-        )
-
-
-
-        // Check for a matching keyword
-        for ((keyword, topic) in keywordToTopicMap) {
-            if (questionText.contains(keyword, ignoreCase = true)) {
-                return topic
-            }
-        }
-        return "General Knowledge" // Default if no keywords match
+        return generalKnowledgeFilter.getTopicForQuestion(questionText)
     }
+
+//    fun getTopicForQuestion(questionText: String): String {
+//        val keywordToTopicMap = mapOf(
+//            // Broad Categories
+//            "president" to "History",
+//            "landmark" to "Geography",
+//            "planet" to "Science & Nature",
+//            "furlong" to "Measurements",
+//            "language" to "Language",
+//            "company" to "Companies",
+//            "companies" to "Companies",
+//            "comic" to "Comics",
+//            "galaxy" to "Astronomy",
+//            "zodiac" to "Astrology",
+//            "game" to "Games",
+//            "toy" to "Pop Culture",
+//            "building" to "Architecture",
+//            "helicopter" to "Inventions",
+//            "mystery" to "Mysteries",
+//            "transportation" to "Transportation",
+//            "food" to "Food & Drink",
+//            "drink" to "Food & Drink",
+//            "color" to "Art & Design",
+//            "shape" to "Shapes",
+//            "city" to "Geography",
+//            "restaurant" to "Restaurants",
+//            "technology" to "Technology",
+//            "video game" to "Video Games",
+//            "candy" to "Food & Drink",
+//            "fashion" to "Fashion",
+//            "time" to "History",
+//            "movie" to "Entertainment",
+//            "space" to "Astronomy",
+//            "body" to "Biology",
+//            "biology" to "Biology",
+//            "dance" to "Entertainment",
+//            "religion" to "Religion",
+//            "animal" to "Animals",
+//            "astrology" to "Astrology",
+//            "science" to "Science & Nature",
+//            "history" to "History",
+//            "entertainment" to "Pop Culture"
+//        )
+//
+//
+//
+//        // Check for a matching keyword
+//        for ((keyword, topic) in keywordToTopicMap) {
+//            if (questionText.contains(keyword, ignoreCase = true)) {
+//                return topic
+//            }
+//        }
+//        return "General Knowledge" // Default if no keywords match
+//    }
 
 }
 

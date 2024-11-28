@@ -3,6 +3,7 @@ package com.thatwaz.whoknew.di
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.thatwaz.whoknew.data.network.TriviaApiService
+import com.thatwaz.whoknew.filters.GeneralKnowledgeFilter
 
 
 import dagger.Module
@@ -35,4 +36,9 @@ object NetworkModule {
     @Provides
     fun provideTriviaApiService(retrofit: Retrofit): TriviaApiService =
         retrofit.create(TriviaApiService::class.java)
+
+    @Provides
+    fun provideGeneralKnowledgeFilter(): GeneralKnowledgeFilter {
+        return GeneralKnowledgeFilter()
+    }
 }
